@@ -1,4 +1,1 @@
 pyTelegramBotAPI==4.15.1
-Flask==3.0.0
-gunicorn==21.2.0
-PyMuPDF==1.23.26
