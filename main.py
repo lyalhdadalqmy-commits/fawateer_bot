@@ -1,8 +1,7 @@
 import telebot, json, os, zipfile, time, threading, shutil, sqlite3, re
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 from datetime import datetime, timedelta
-# حذفت Flask لأنه مو لازم
-import pypdf # بديل fitz الخفيف
+import pypdf # بديل fitz - خفيف ويشتغل على Railway
 
 # ✅ التوكن يجي من Railway - لا تكتبه هنا أبداً
 TOKEN = os.environ.get('BOT_TOKEN')
@@ -72,6 +71,7 @@ def extract_invoice_amount(pdf_path):
     except: return 0.0
 
 def save_invoice(parent_code, device_code, pdf_path):
+    """✅ يحفظ الفاتورة والمبلغ في القاعدة"""
     amount = extract_invoice_amount(pdf_path)
     if amount == 0: return 0
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -85,7 +85,7 @@ def save_invoice(parent_code, device_code, pdf_path):
     return amount
 
 def get_daily_total(parent_code, date_str):
-    """✅ مجموع يوم معين - مضمون 100%"""
+    """✅ مجموع يوم معين - نفس كودك 100%"""
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     c = conn.cursor()
     c.execute('''SELECT SUM(amount) FROM invoices
@@ -95,7 +95,7 @@ def get_daily_total(parent_code, date_str):
     return total if total else 0.0
 
 def get_monthly_total(parent_code, year_month):
-    """✅ مجموع شهر معين YYYY-MM - مضمون 100%"""
+    """✅ مجموع شهر معين YYYY-MM - نفس كودك 100%"""
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
     c = conn.cursor()
     c.execute('''SELECT SUM(amount) FROM invoices
@@ -103,6 +103,44 @@ def get_monthly_total(parent_code, year_month):
     total = c.fetchone()[0]
     conn.close()
     return total if total else 0.0
+
+def send_daily_reports():
+    today = datetime.now().strftime('%Y-%m-%d')
+    restaurants = get_all_restaurants()
+    for code, rest in restaurants.items():
+        if rest['status'] == 'active':
+            total = get_daily_total(code, today)
+            if total > 0:
+                msg = f'''📊 *التقرير اليومي* 📊
+
+مطعم: {rest['name']}
+التاريخ: {today}
+المبيعات: {total:,.2f} ريال
+
+✅ تم الإرسال تلقائياً الساعة 12:00'''
+                try: bot.send_message(int(rest['owner_id']), msg, parse_mode='Markdown')
+                except: pass
+                try: bot.send_message(ADMIN_ID, f"📊 {rest['name']}: {total:,.2f} ريال", parse_mode='Markdown')
+                except: pass
+
+def send_monthly_reports():
+    last_month = (datetime.now().replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
+    restaurants = get_all_restaurants()
+    for code, rest in restaurants.items():
+        if rest['status'] == 'active':
+            total = get_monthly_total(code, last_month)
+            if total > 0:
+                msg = f'''📊 *التقرير الشهري* 📊
+
+مطعم: {rest['name']}
+الشهر: {last_month}
+إجمالي المبيعات: {total:,.2f} ريال
+
+✅ تم الإرسال تلقائياً'''
+                try: bot.send_message(int(rest['owner_id']), msg, parse_mode='Markdown')
+                except: pass
+                try: bot.send_message(ADMIN_ID, f"📊 {rest['name']} - {last_month}: {total:,.2f} ريال", parse_mode='Markdown')
+                except: pass
 
 def get_restaurant(code):
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -163,6 +201,26 @@ def is_active(code):
         return rest['status'] == 'active' and datetime.now() < expiry
     except: return False
 
+def check_expiry_notifications():
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    c = conn.cursor()
+    c.execute('SELECT * FROM restaurants WHERE status="active"')
+    rows = c.fetchall()
+    for row in rows:
+        code = row[0]
+        try:
+            expiry = datetime.strptime(row[6], '%Y-%m-%d')
+            days_left = (expiry - datetime.now()).days
+            if days_left == 5 and row[8] == 0:
+                devices = row[4]
+                total = PRICE_PER_DEVICE * devices
+                msg = f'''⚠️ *تنبيه انتهاء اشتراك* ⚠️\n\nمطعم: {row[1]}\nالكود: `{code}`\nالأجهزة: {devices}\nمتبقي: 5 أيام\nينتهي: {row[6]}\n\n💰 التجديد: {total:,} ريال\n📱 {row[3]}\n\n🔴 *القرار بيدك - لن يتوقف تلقائياً*'''
+                bot.send_message(ADMIN_ID, msg, parse_mode='Markdown')
+                c.execute('UPDATE restaurants SET notified_5days=1 WHERE code=?', (code,))
+                conn.commit()
+        except Exception as e: print(f"Error: {e}")
+    conn.close()
+
 def main_menu():
     markup = ReplyKeyboardMarkup(resize_keyboard=True)
     markup.row(KeyboardButton('➕ مطعم جديد'), KeyboardButton('🖥️ جهاز جديد'))
@@ -184,6 +242,7 @@ def start(message):
         text = f'''🔥 *نظام فواتيري V7.3 SQLite* 🔥\n\nاشتراك: {PRICE_PER_DEVICE:,} ريال/جهاز/شهر\n\n✅ قاعدة بيانات آمنة 100%\n✅ تقارير يومية/شهرية تلقائية\n✅ صفر مجهود على الكاشير\n\n👨‍💼 {OWNER_NAME}\n📞 {OWNER_PHONE}'''
         bot.send_message(message.chat.id, text, parse_mode='Markdown')
         return
+    check_expiry_notifications()
     restaurants = get_all_restaurants()
     active_devices = sum(r['devices_count'] for r in restaurants.values() if r['status'] == 'active')
     text = f'''أهلاً يا جمال 👋\n*لوحة تحكم V7.3 SQLite*\n\n💰 السعر: {PRICE_PER_DEVICE:,} ريال/جهاز\n🖥️ أجهزة شغالة: {active_devices}\n⚡ SQLite + تقارير تلقائية\n🔒 إيقاف يدوي فقط'''
@@ -221,7 +280,6 @@ def month_report(message):
     text += f'\n💰 *الإجمالي*: {grand_total:,.2f} ريال'
     bot.send_message(message.chat.id, text, parse_mode='Markdown')
 
-# ✅ باقي الدوال زي ما هي بالضبط من كودك - نسختها لك
 @bot.message_handler(func=lambda m: m.text == '➕ مطعم جديد')
 def new_restaurant_step1(message):
     if message.from_user.id!= ADMIN_ID: return
@@ -363,6 +421,63 @@ def process_stop(message):
         bot.send_message(message.chat.id, f'⛔ تم إيقاف {rest["name"]} وكل أجهزته')
     else: bot.send_message(message.chat.id, '❌ الكود غير موجود')
 
+@bot.message_handler(func=lambda m: m.text == '📋 كل المطاعم')
+def all_restaurants(message):
+    if message.from_user.id!= ADMIN_ID: return
+    restaurants = get_all_restaurants()
+    if not restaurants:
+        bot.send_message(message.chat.id, 'لا توجد مطاعم')
+        return
+    text = '📋 *كل المطاعم*\n\n'
+    for code, rest in restaurants.items():
+        status = '🟢 شغال' if is_active(code) else '🔴 متوقف'
+        text += f'*{rest["name"]}*\nالكود: `{code}`\nالحالة: {status}\nالأجهزة: {rest["devices_count"]}\nينتهي: {rest["expiry"]}\n---\n'
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.text == '⚠️ قربت تنتهي')
+def expiring_soon(message):
+    if message.from_user.id!= ADMIN_ID: return
+    restaurants = get_all_restaurants()
+    text = '⚠️ *قربت تنتهي*\n\n'
+    found = False
+    for code, rest in restaurants.items():
+        try:
+            expiry = datetime.strptime(rest['expiry'], '%Y-%m-%d')
+            days_left = (expiry - datetime.now()).days
+            if 0 <= days_left <= 7 and rest['status'] == 'active':
+                text += f'*{rest["name"]}*: {days_left} يوم - {rest["expiry"]}\n'
+                found = True
+        except: pass
+    if not found: text += 'لا توجد اشتراكات قربت تنتهي'
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.text == '🖥️ حالة الأجهزة')
+def devices_status(message):
+    if message.from_user.id!= ADMIN_ID: return
+    conn = sqlite3.connect(DB_FILE, check_same_thread=False)
+    c = conn.cursor()
+    c.execute('SELECT * FROM devices')
+    devices = c.fetchall()
+    conn.close()
+    if not devices:
+        bot.send_message(message.chat.id, 'لا توجد أجهزة')
+        return
+    text = '🖥️ *حالة الأجهزة*\n\n'
+    for d in devices:
+        status = '🟢' if d[6] == 'active' else '🔴'
+        last_hb = d[8] if d[8] else 'لا يوجد'
+        text += f'{status} *{d[2]}*\nالكود: `{d[0]}`\nآخر اتصال: {last_hb}\n---\n'
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
+@bot.message_handler(func=lambda m: m.text == '📊 الأرباح')
+def profits(message):
+    if message.from_user.id!= ADMIN_ID: return
+    restaurants = get_all_restaurants()
+    active_devices = sum(r['devices_count'] for r in restaurants.values() if r['status'] == 'active')
+    monthly_profit = active_devices * PRICE_PER_DEVICE
+    text = f'''📊 *الأرباح*\n\n🖥️ أجهزة نشطة: {active_devices}\n💰 السعر: {PRICE_PER_DEVICE:,} ريال/شهر\n\n💵 *الربح الشهري*: {monthly_profit:,} ريال\n💵 *الربح السنوي*: {monthly_profit*12:,} ريال'''
+    bot.send_message(message.chat.id, text, parse_mode='Markdown')
+
 @bot.message_handler(content_types=['document'])
 def handle_pdf(message):
     if message.from_user.id!= ADMIN_ID: return
@@ -371,8 +486,6 @@ def handle_pdf(message):
         downloaded = bot.download_file(file_info.file_path)
         pdf_path = f"temp_{message.document.file_name}"
         with open(pdf_path, 'wb') as f: f.write(downloaded)
-
-        # لازم نعرف لأي مطعم الفاتورة - بنطلب من الأدمن
         msg = bot.send_message(message.chat.id, 'أرسل كود المطعم + كود الجهاز لهذي الفاتورة\nمثال: SALAM|D1')
         bot.register_next_step_handler(msg, lambda m: process_invoice(m, pdf_path))
     except Exception as e: bot.send_message(message.chat.id, f'❌ خطأ: {str(e)}')
@@ -389,6 +502,7 @@ def process_invoice(message, pdf_path):
     except Exception as e: bot.send_message(message.chat.id, f'❌ خطأ: {str(e)}')
 
 # ✅ تشغيل البوت
-init_db()
-print("البوت شغال...")
-bot.infinity_polling()
+if __name__ == "__main__":
+    init_db()
+    print("البوت شغال...")
+    bot.infinity_polling()
