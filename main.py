@@ -7,9 +7,11 @@ from telegram.ext import Application, CommandHandler, ContextTypes
 # ========== الاعدادات - يقرأ من Railway ==========
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 ADMIN_ID = int(os.environ.get("ADMIN_ID"))
-ADMIN_PHONE = os.environ.get("ADMIN_PHONE")
+# لو ما ضفتهم في Railway حط قيم افتراضية عشان ما يطفى
+ADMIN_PHONE = os.environ.get("ADMIN_PHONE", "777000000")
 SUBSCRIPTION_PRICE = os.environ.get("SUBSCRIPTION_PRICE", "20,000")
-ADMIN_NAME = os.environ.get("ADMIN_NAME")
+ADMIN_NAME = os.environ.get("ADMIN_NAME", "جمال")
+
 DATA_FILE = "restaurants.json"
 
 # ========== تحميل البيانات ==========
@@ -27,7 +29,7 @@ def save_data(data):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
         return
-    await update.message.reply_text("بوت التحكم شغال ✅\n/add /stop /start /devices /alert /log")
+    await update.message.reply_text("بوت التحكم شغال ✅\n/add /stop /start_res /devices /alert /log")
 
 async def add_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
@@ -60,18 +62,21 @@ async def add_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(f"config_{name}.json", 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-        # 1. نرسل لك انت تنبيه
-        await context.bot.send_message(
-            chat_id=ADMIN_PHONE,
-            text=f"✅ تم اضافة مطعم جديد\n\n"
-                 f"الاسم: {name}\n"
-                 f"رقم المالك: {owner_id}\n"
-                 f"مدة الاشتراك: {days} يوم\n"
-                 f"قيمة الاشتراك: {SUBSCRIPTION_PRICE} ريال\n"
-                 f"تاريخ الانتهاء: {expiry}"
-        )
+        # نرسل لك انت تنبيه - لو ADMIN_PHONE رقم تليجرام
+        try:
+            await context.bot.send_message(
+                chat_id=ADMIN_ID,
+                text=f"✅ تم اضافة مطعم جديد\n\n"
+                     f"الاسم: {name}\n"
+                     f"رقم المالك: {owner_id}\n"
+                     f"مدة الاشتراك: {days} يوم\n"
+                     f"قيمة الاشتراك: {SUBSCRIPTION_PRICE} ريال\n"
+                     f"تاريخ الانتهاء: {expiry}"
+            )
+        except:
+            pass
 
-        # 2. نرسل لصاحب المطعم رسالة الترحيب + طريقة الدفع
+        # نرسل لصاحب المطعم
         await context.bot.send_message(
             chat_id=owner_id,
             text=f"🎉 مرحباً بك في ( جمال اتميشن ) 🎉\n\n"
@@ -188,7 +193,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add", add_restaurant))
     app.add_handler(CommandHandler("stop", stop_restaurant))
-    app.add_handler(CommandHandler("start", start_restaurant))
+    app.add_handler(CommandHandler("start_res", start_restaurant)) # غيرنا الاسم عشان ما يتعارض
     app.add_handler(CommandHandler("devices", devices))
     app.add_handler(CommandHandler("alert", alert))
     app.add_handler(CommandHandler("log", log))
