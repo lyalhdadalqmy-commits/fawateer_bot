@@ -35,6 +35,10 @@ async def add_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
         return
     try:
+        if len(context.args) < 2:
+            await update.message.reply_text("الاستخدام: /add 967771234567 الشامي 30")
+            return
+
         owner_id = context.args[0]
         name = context.args[1]
         days = int(context.args[2]) if len(context.args) > 2 else 30
@@ -62,7 +66,7 @@ async def add_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(f"config_{name}.json", 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
 
-        # نرسل لك انت تنبيه - لو ADMIN_PHONE رقم تليجرام
+        # نرسل لك انت تنبيه
         try:
             await context.bot.send_message(
                 chat_id=ADMIN_ID,
@@ -77,33 +81,40 @@ async def add_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
 
         # نرسل لصاحب المطعم
-        await context.bot.send_message(
-            chat_id=owner_id,
-            text=f"🎉 مرحباً بك في ( جمال اتميشن ) 🎉\n\n"
-                 f"تم تفعيل اشتراك مطعم: {name}\n"
-                 f"مدة الاشتراك: {days} يوم\n"
-                 f"قيمة الاشتراك الشهري: {SUBSCRIPTION_PRICE} ريال\n\n"
-                 f"💳 طرق الدفع:\n"
-                 f"1. حوالة عبر جوالي\n"
-                 f"2. حوالة عبر الكريمي\n"
-                 f"3. حوالة صافية\n\n"
-                 f"الاسم: {ADMIN_NAME}\n"
-                 f"الرقم: {ADMIN_PHONE}\n\n"
-                 f"📄 من الآن ستصلك كل فواتير المطعم هنا تلقائياً\n"
-                 f"📊 + تقرير يومي وشهري بالمجموع\n\n"
-                 f"لاي استفسار تواصل معنا على نفس الرقم"
-        )
+        try:
+            await context.bot.send_message(
+                chat_id=owner_id,
+                text=f"🎉 مرحباً بك في ( جمال اتميشن ) 🎉\n\n"
+                     f"تم تفعيل اشتراك مطعم: {name}\n"
+                     f"مدة الاشتراك: {days} يوم\n"
+                     f"قيمة الاشتراك الشهري: {SUBSCRIPTION_PRICE} ريال\n\n"
+                     f"💳 طرق الدفع:\n"
+                     f"1. حوالة عبر جوالي\n"
+                     f"2. حوالة عبر الكريمي\n"
+                     f"3. حوالة صافية\n\n"
+                     f"الاسم: {ADMIN_NAME}\n"
+                     f"الرقم: {ADMIN_PHONE}\n\n"
+                     f"📄 من الآن ستصلك كل فواتير المطعم هنا تلقائياً\n"
+                     f"📊 + تقرير يومي وشهري بالمجموع\n\n"
+                     f"لاي استفسار تواصل معنا على نفس الرقم"
+            )
+        except Exception as e:
+            await update.message.reply_text(f"⚠️ ما قدرت ارسل لصاحب المطعم: {e}")
 
-        await update.message.reply_document(
-            document=open(f"config_{name}.json", 'rb'),
-            caption=f"تم اضافة {name} ✅\nالانتهاء: {expiry}\n\nركب الملف مع save_invoices.exe"
-        )
+        with open(f"config_{name}.json", 'rb') as doc:
+            await update.message.reply_document(
+                document=doc,
+                caption=f"تم اضافة {name} ✅\nالانتهاء: {expiry}\n\nركب الملف مع save_invoices.exe"
+            )
 
     except Exception as e:
         await update.message.reply_text(f"خطأ: {e}\nالاستخدام: /add 967771234567 الشامي 30")
 
 async def stop_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /stop اسم_المطعم")
         return
     name = context.args[0]
     data = load_data()
@@ -117,6 +128,9 @@ async def stop_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def start_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
         return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /start_res اسم_المطعم")
+        return
     name = context.args[0]
     data = load_data()
     if name in data:
@@ -128,6 +142,9 @@ async def start_restaurant(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def devices(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
+        return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /devices اسم_المطعم 3")
         return
     name = context.args[0]
     count = int(context.args[1]) if len(context.args) > 1 else 1
@@ -147,7 +164,8 @@ async def devices(update: Update, context: ContextTypes.DEFAULT_TYPE):
         filename = f"config_{name}_جهاز{i+1}.json"
         with open(filename, 'w', encoding='utf-8') as f:
             json.dump(config, f, ensure_ascii=False, indent=2)
-        await update.message.reply_document(document=open(filename, 'rb'))
+        with open(filename, 'rb') as doc:
+            await update.message.reply_document(document=doc)
 
     await update.message.reply_text(f"تم توليد {count} ملف تركيب لـ {name} ✅")
 
@@ -171,6 +189,9 @@ async def alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def log(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id!= ADMIN_ID:
         return
+    if not context.args:
+        await update.message.reply_text("الاستخدام: /log اسم_المطعم")
+        return
     name = context.args[0]
     data = load_data()
     if name in data:
@@ -193,7 +214,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("add", add_restaurant))
     app.add_handler(CommandHandler("stop", stop_restaurant))
-    app.add_handler(CommandHandler("start_res", start_restaurant)) # غيرنا الاسم عشان ما يتعارض
+    app.add_handler(CommandHandler("start_res", start_restaurant))
     app.add_handler(CommandHandler("devices", devices))
     app.add_handler(CommandHandler("alert", alert))
     app.add_handler(CommandHandler("log", log))
