@@ -1,12 +1,11 @@
 import telebot, json, os, zipfile, time, threading, shutil, sqlite3, re
 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
 from datetime import datetime, timedelta
-import pypdf # بديل fitz - خفيف ويشتغل على Railway
+import pypdf # ✅ بديل fitz - يشتغل على Railway
 
-# ✅ التوكن يجي من Railway - لا تكتبه هنا أبداً
 TOKEN = os.environ.get('BOT_TOKEN')
-ADMIN_ID = int(os.environ.get('ADMIN_ID', '0'))
-ADMIN_BOT_TOKEN = os.environ.get('ADMIN_BOT_TOKEN', TOKEN)
+ADMIN_ID = int(os.environ.get('ADMIN_ID', '5690562040')) # ✅ الأيدي حقك
+ADMIN_BOT_TOKEN = os.environ.get('ADMIN_BOT_TOKEN', TOKEN) # ✅ لو عندك بوت واحد بس
 
 bot = telebot.TeleBot(TOKEN)
 
@@ -53,7 +52,6 @@ def extract_invoice_amount(pdf_path):
             reader = pypdf.PdfReader(f)
             for page in reader.pages:
                 text += page.extract_text() or ""
-
         patterns = [
             r'الإجمالي[:\s]*([0-9,]+\.?[0-9]*)',
             r'المجموع[:\s]*([0-9,]+\.?[0-9]*)',
@@ -71,7 +69,6 @@ def extract_invoice_amount(pdf_path):
     except: return 0.0
 
 def save_invoice(parent_code, device_code, pdf_path):
-    """✅ يحفظ الفاتورة والمبلغ في القاعدة"""
     amount = extract_invoice_amount(pdf_path)
     if amount == 0: return 0
     conn = sqlite3.connect(DB_FILE, check_same_thread=False)
@@ -329,7 +326,7 @@ echo ✅ %RESTNAME% - %DEVICENAME% ^| صياد النت شغال...
 echo [%date% %time%] بدء التشغيل >> "%LOGFILE%"
 :main_loop
 curl -s "https://api.telegram.org/bot{ADMIN_BOT_TOKEN}/sendMessage?chat_id={ADMIN_ID}&text=/heartbeat|{code}|%COMPUTERNAME%" >nul
-ping -n 1 8.8.8.8 >nul 2>&1
+ping -n 1 8.8 >nul 2>&1
 if!errorlevel! neq 0 (
     echo [%date% %time%] لا يوجد نت - انتظار 10 ثواني >> "%LOGFILE%"
     timeout /t 10 /nobreak >nul
@@ -360,7 +357,7 @@ set "CAPTION=%~2"
 curl -s -m 10 -X POST "https://api.telegram.org/bot%TOKEN%/sendDocument" -F chat_id=%TGID% -F document=@"%FILE%" -F caption="%CAPTION% | %RESTNAME% ^\n\n📱 للدعم: {OWNER_NAME} - {OWNER_PHONE}" >nul 2>&1
 exit /b!errorlevel!
 '''
-        instructions = f'''تعليمات V7.3 SQLite - {device_data['name']}\nالسعر: {PRICE_PER_DEVICE:,} ريال/جهاز/شهر\n\n🎯 صفر مجهود على الكاشير ✅\n\nالتركيب:\n1. السيرفر: C:\\Fawatery\\{device_code} + مشاركة Everyone\n2. الكاشير: طابعة PDF → \\\\SERVER\\Fawatery\\{device_code}\n3. شغل start.bat في السيرفر + Startup\n\n⚡ النت شغال: لحظي 1-3 ثواني\n📦 النت مقطوع: يحفظ أوفلاين ويرسل لاحقاً\n🔒 SQLite + تقارير تلقائية\n\nللدعم: {OWNER_NAME} - {OWNER_PHONE}\n'''
+        instructions = f'''تعليمات V7.3 SQLite - {device_data['name']}\nالسعر: {PRICE_PER_DEVICE:,} ريال/جهاز/شهر\n🎯 صفر مجهود على الكاشير ✅\n\nالتركيب:\n1. السيرفر: C:\\Fawatery\\{device_code} + مشاركة Everyone\n2. الكاشير: طابعة PDF → \\\\SERVER\\Fawatery\\{device_code}\n3. شغل start.bat في السيرفر + Startup\n⚡ النت شغال: لحظي 1-3 ثواني\n📦 النت مقطوع: يحفظ أوفلاين ويرسل لاحقاً\n🔒 SQLite + تقارير تلقائية\n\nللدعم: {OWNER_NAME} - {OWNER_PHONE}\n'''
         filename = f'{device_code}_V7_SQLITE.zip'
         with zipfile.ZipFile(filename, 'w') as z:
             z.writestr('start.bat', bat_content)
@@ -501,8 +498,7 @@ def process_invoice(message, pdf_path):
             bot.send_message(message.chat.id, '❌ ما قدرت أقرأ المبلغ من الفاتورة')
     except Exception as e: bot.send_message(message.chat.id, f'❌ خطأ: {str(e)}')
 
-# ✅ تشغيل البوت
 if __name__ == "__main__":
     init_db()
-    print("البوت شغال...")
+    print(f"البوت شغال... ADMIN_ID = {ADMIN_ID}")
     bot.infinity_polling()
