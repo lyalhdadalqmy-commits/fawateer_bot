@@ -1,1 +1,1 @@
-python-3.11.6
+worker: python main.py
